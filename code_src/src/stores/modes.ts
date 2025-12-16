@@ -129,6 +129,13 @@ export const useModeStore = defineStore('mode', () => {
     return saved
   }
 
+  function updateRuleRunTime(ruleId: string, timestamp: string) {
+    const target = githubRules.value.find((rule) => rule.id === ruleId)
+    if (target) {
+      target.lastRunAt = timestamp
+    }
+  }
+
   async function fetchGithubSettings() {
     const data = await backendBridge.getGithubSettings()
     githubSettings.value = {
@@ -201,6 +208,7 @@ export const useModeStore = defineStore('mode', () => {
     bootstrap,
     saveMode,
     saveGithubRule,
+    updateRuleRunTime,
     fetchGithubSettings,
     updateGithubSettings,
     syncGithubRule,

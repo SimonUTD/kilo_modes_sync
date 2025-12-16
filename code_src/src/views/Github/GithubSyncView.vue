@@ -11,6 +11,7 @@ interface SyncRecord {
   skipped: number
   finishedAt: string
   status: 'success' | 'warning' | 'error'
+  errors: string[]
 }
 
 const modeStore = useModeStore()
@@ -31,6 +32,7 @@ const ruleDraft = reactive<Pick<GithubRuleEntity, 'name' | 'query' | 'pathHint' 
 })
 
 const syncHistories = ref<SyncRecord[]>([])
+const syncingRuleId = ref<string | null>(null)
 
 const ruleKeyword = ref('')
 const statusMessage = ref('')
@@ -102,6 +104,7 @@ async function handleSaveSettings() {
 
 async function handleSyncRule(rule: GithubRuleEntity) {
   statusMessage.value = `正在根据规则「${rule.name}」同步...`
+  syncingRuleId.value = rule.id
   try {
     const result = await modeStore.syncGithubRule({ query: rule.query, pathHint: rule.pathHint })
     syncHistories.value.unshift({
@@ -111,12 +114,15 @@ async function handleSyncRule(rule: GithubRuleEntity) {
       stored: result.savedModes,
       skipped: result.skippedDueToMissingFields,
       finishedAt: new Date().toLocaleString(),
-      status: result.errors.length ? 'warning' : 'success'
+      status: result.errors.length ? 'warning' : 'success',
+      errors: result.errors
     })
+    modeStore.updateRuleRunTime(rule.id, new Date().toISOString())
     statusMessage.value = 'GitHub 同步已完成'
   } catch (err) {
     statusMessage.value = err instanceof Error ? err.message : String(err)
   } finally {
+    syncingRuleId.value = null
     setTimeout(() => (statusMessage.value = ''), 4000)
   }
 }
@@ -229,10 +235,11 @@ onMounted(async () => {
               <td class="px-4 py-3 text-sm text-gray-600">{{ rule.lastRunAt || '-' }}</td>
               <td class="px-4 py-3 text-right">
                 <button
-                  class="rounded-md border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:border-blue-500 hover:text-blue-600"
+                  class="rounded-md border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:border-blue-500 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="syncingRuleId === rule.id"
                   @click="handleSyncRule(rule)"
                 >
-                  执行同步
+                  {{ syncingRuleId === rule.id ? '同步中...' : '执行同步' }}
                 </button>
               </td>
             </tr>
@@ -339,6 +346,17 @@ onMounted(async () => {
               <dd class="text-sm font-semibold text-gray-900">{{ record.skipped }}</dd>
             </div>
           </dl>
+          <div v-if="record.errors.length" class="mt-3 rounded-md bg-white/70 p-3 text-xs text-red-600">
+            <p class="font-semibold">错误详情</p>
+            <ul class="mt-1 list-disc space-y-1 pl-5">
+              <li v-for="err in record.errors.slice(0, 3)" :key="err">
+                {{ err }}
+              </li>
+              <li v-if="record.errors.length > 3">
+                还有 {{ record.errors.length - 3 }} 条错误，请查看日志
+              </li>
+            </ul>
+          </div>
         </article>
       </div>
     </section>
