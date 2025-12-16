@@ -740,15 +740,14 @@ watch(
         <!-- 模式列表 -->
         <div v-if="activeTab === 'modes'" class="space-y-4">
           <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
+            <!-- <div>
               <h2 class="text-lg font-semibold text-gray-900">本地模式库</h2>
-              <p class="text-sm text-gray-500">从数据库读取的所有模式，可批量同步到不同实例</p>
               <p class="mt-1 text-xs text-gray-400">
                 高质量阈值：{{ roleDefinitionThreshold }} 字（高质量：{{
                   modes.filter((item) => item.roleDefinitionLength >= roleDefinitionThreshold).length
                 }} / {{ modes.length }}）
               </p>
-            </div>
+            </div> -->
             <div class="flex flex-wrap gap-2 md:justify-end">
               <input
                 v-model="filterKeyword"
@@ -883,9 +882,6 @@ watch(
 
         <!-- 当前生效模式 -->
         <div v-else-if="activeTab === 'active'" class="space-y-4">
-          <h2 class="text-lg font-semibold text-gray-900">当前生效模式</h2>
-          <p class="text-sm text-gray-500">实时读取每个实例的配置，可直接编辑后写回</p>
-
           <div class="grid gap-4 md:grid-cols-1" v-if="ideInstances.length">
             <div
               v-for="instance in ideInstances"
@@ -959,7 +955,7 @@ watch(
 
         <!-- 模式对比 -->
         <div v-else class="space-y-4">
-          <h2 class="text-lg font-semibold text-gray-900">跨软件模式对比</h2>
+          <!-- <h2 class="text-lg font-semibold text-gray-900">跨软件模式对比</h2> -->
           <p class="text-sm text-gray-500">
             按 slug 对比所有 KiloCode 实例与 RooCode 实例的合集；“缺失”表示该类型的实例中未发现该 slug。下方操作会将本地库中同 slug 的模式写入勾选实例。
           </p>

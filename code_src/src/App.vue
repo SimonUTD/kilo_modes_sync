@@ -36,9 +36,9 @@ onMounted(async () => {
 
 <template>
   <div class="flex h-screen overflow-hidden bg-slate-950/5">
-    <aside class="sticky top-0 h-screen w-72 shrink-0 overflow-y-auto border-r border-gray-200 bg-white/90 p-4 shadow-sm">
+    <aside class="sticky top-0 h-screen w-40 shrink-0 overflow-y-auto border-r border-gray-200 bg-white/90 p-4 shadow-sm">
       <div>
-        <p class="text-sm font-semibold text-gray-900">Kilo/Roo 自定义模式管家</p>
+        <p class="text-sm font-semibold text-gray-900">Kilo/Roo<br/>自定义模式管家</p>
       </div>
 
       <nav class="mt-8 space-y-2">
@@ -51,15 +51,15 @@ onMounted(async () => {
         >
           <span class="min-w-0">
             <p class="text-sm font-medium">{{ item.label }}</p>
-            <p class="text-xs text-gray-400" :class="activePath === item.to ? 'text-blue-500' : ''">{{ item.description }}</p>
+            <!-- <p class="text-xs text-gray-400" :class="activePath === item.to ? 'text-blue-500' : ''">{{ item.description }}</p> -->
           </span>
-          <span
+          <!-- <span
             v-if="item.badge"
             class="mt-0.5 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600 group-hover:bg-gray-200"
             :class="activePath === item.to ? 'bg-blue-100 text-blue-700 group-hover:bg-blue-100' : ''"
           >
             {{ item.badge() }}
-          </span>
+          </span> -->
         </RouterLink>
       </nav>
     </aside>
