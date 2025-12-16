@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tauri-vue3-template",
+  "productName": "kilo-roo-modes",
   "version": "0.1.0",
-  "identifier": "com.tauri-vue3-template.app",
+  "identifier": "com.kilo-roo.modes",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "tauri-vue3-template",
-        "width": 800,
-        "height": 600
+        "title": "Kilo/Roo 模式管家",
+        "width": 1024,
+        "height": 800
       }
     ],
     "security": {
@@ -31,7 +31,7 @@
       }
     },
     "active": true,
-    "targets": "all",
+    "targets": ["app", "nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

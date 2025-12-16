@@ -1,12 +1,8 @@
-use crate::db::{AppDatabase, ModeRecord};
-use chrono::Utc;
+use crate::db::AppDatabase;
 use reqwest::{Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::time::{sleep, Duration};
-use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum GithubSyncError {
@@ -18,6 +14,8 @@ pub enum GithubSyncError {
     Json(#[from] serde_json::Error),
     #[error("导入数据库失败: {0}")]
     Database(#[from] crate::db::DbError),
+    #[error("GitHub API 返回错误: {0}")]
+    Api(String),
     #[error("未找到任何模式文件")]
     NoModeFound,
 }
@@ -29,17 +27,13 @@ struct GithubSearchResponse {
 
 #[derive(Debug, Deserialize)]
 struct GithubFileItem {
-    name: String,
     path: String,
     repository: GithubRepository,
-    #[serde(default)]
-    score: f64,
 }
 
 #[derive(Debug, Deserialize)]
 struct GithubRepository {
     full_name: String,
-    url: String,
 }
 
 #[derive(Debug)]
@@ -49,6 +43,9 @@ pub struct GithubSyncConfig {
     pub path_hint: String,
     pub delay_sec: u64,
     pub proxy: Option<String>,
+    pub rule_id: Option<String>,
+    pub rule_name: Option<String>,
+    pub branch: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +54,75 @@ pub struct GithubSyncResult {
     pub saved_modes: usize,
     pub skipped_due_to_missing_fields: usize,
     pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubTokenTestResult {
+    pub ok: bool,
+    pub status: u16,
+    pub remaining: Option<i64>,
+    pub reset_at: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubRateLimitResponse {
+    resources: GithubRateLimitResources,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubRateLimitResources {
+    core: GithubRateLimitCore,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubRateLimitCore {
+    remaining: i64,
+    reset: i64,
+}
+
+pub async fn test_github_token(
+    token: String,
+    proxy: Option<String>,
+) -> Result<GithubTokenTestResult, GithubSyncError> {
+    if token.trim().is_empty() {
+        return Err(GithubSyncError::MissingToken);
+    }
+    let client = build_client(proxy)?;
+    let resp = client
+        .get("https://api.github.com/rate_limit")
+        .header("User-Agent", "kilo-roo-sync")
+        .header("Authorization", format!("token {}", token))
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Ok(GithubTokenTestResult {
+            ok: false,
+            status: status.as_u16(),
+            remaining: None,
+            reset_at: None,
+            message: if body.trim().is_empty() {
+                format!("Token 校验失败（HTTP {}）", status)
+            } else {
+                format!("Token 校验失败（HTTP {}）: {}", status, body)
+            },
+        });
+    }
+
+    let data = resp.json::<GithubRateLimitResponse>().await?;
+    let reset_at = chrono::DateTime::<chrono::Utc>::from_timestamp(data.resources.core.reset, 0)
+        .map(|dt| dt.to_rfc3339());
+    Ok(GithubTokenTestResult {
+        ok: true,
+        status: status.as_u16(),
+        remaining: Some(data.resources.core.remaining),
+        reset_at,
+        message: "Token 可用，可调用 GitHub API".to_string(),
+    })
 }
 
 pub async fn sync_from_github(
@@ -74,31 +140,70 @@ pub async fn sync_from_github(
     };
 
     let client = build_client(config.proxy.clone())?;
-    let search_url = format!(
-        "https://api.github.com/search/code?q={}&per_page=10",
-        urlencoding::encode(&config.query)
-    );
-    let search_resp = client
-        .get(&search_url)
-        .header("User-Agent", "kilo-roo-sync")
-        .header("Authorization", format!("token {}", config.token))
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<GithubSearchResponse>()
-        .await?;
-
-    if search_resp.items.is_empty() {
-        return Err(GithubSyncError::NoModeFound);
+    let mut aggregated: Vec<GithubFileItem> = Vec::new();
+    for page in 1..=5 {
+        let search_url = format!(
+            "https://api.github.com/search/code?q={}&per_page=20&page={}",
+            urlencoding::encode(&config.query),
+            page
+        );
+        let resp = client
+            .get(&search_url)
+            .header("User-Agent", "kilo-roo-sync")
+            .header("Authorization", format!("token {}", config.token))
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            let message = if body.trim().is_empty() {
+                format!("搜索失败（HTTP {}）：{}", status.as_u16(), search_url)
+            } else {
+                format!("搜索失败（HTTP {}）：{} => {}", status.as_u16(), search_url, body)
+            };
+            let _ = db.add_sync_log(
+                "github",
+                config.rule_id.as_deref(),
+                config.rule_name.as_deref().or(Some(&config.query)),
+                Some(&search_url),
+                "error",
+                Some(&message),
+            );
+            return Err(GithubSyncError::Api(message));
+        }
+        let search_resp = resp.json::<GithubSearchResponse>().await?;
+        if search_resp.items.is_empty() {
+            break;
+        }
+        aggregated.extend(search_resp.items);
+        if aggregated.len() >= 100 {
+            break;
+        }
+        sleep(Duration::from_secs(config.delay_sec)).await;
     }
 
-    result.fetched_files = search_resp.items.len();
+    if aggregated.is_empty() {
+        return Err(GithubSyncError::NoModeFound);
+    }
+    result.fetched_files = aggregated.len();
 
-    for item in search_resp.items {
-        let file_url = format!(
-            "https://raw.githubusercontent.com/{}/main/{}",
-            item.repository.full_name, item.path
-        );
+    for item in aggregated {
+        let file_url = match resolve_download_url(&client, &config.token, &config.branch, &item).await {
+            Ok(url) => url,
+            Err(err) => {
+                let message = format!("解析下载地址失败 {}: {}", item.path, err);
+                result.errors.push(message.clone());
+                let _ = db.add_sync_log(
+                    "github",
+                    config.rule_id.as_deref(),
+                    config.rule_name.as_deref().or(Some(&config.query)),
+                    Some(&item.path),
+                    "error",
+                    Some(&message),
+                );
+                continue;
+            }
+        };
         let raw_resp = client
             .get(&file_url)
             .header("User-Agent", "kilo-roo-sync")
@@ -106,22 +211,59 @@ pub async fn sync_from_github(
             .await?;
 
         if !raw_resp.status().is_success() {
-            result.errors.push(format!("无法下载 {}: {}", file_url, raw_resp.status()));
+            let message = format!("无法下载 {}: {}", file_url, raw_resp.status());
+            result.errors.push(message.clone());
+            let _ = db.add_sync_log(
+                "github",
+                config.rule_id.as_deref(),
+                config.rule_name.as_deref().or(Some(&config.query)),
+                Some(&file_url),
+                "error",
+                Some(&message),
+            );
             continue;
         }
+
         let content = raw_resp.text().await?;
-        match parse_modes_from_text(&content, &item.repository.full_name, &item.path) {
-            Ok(mode_list) => {
-                for mode in mode_list {
-                    match db.upsert_mode(mode) {
-                        Ok(_) => result.saved_modes += 1,
-                        Err(err) => result.errors.push(format!("写入数据库失败 {}: {}", item.path, err)),
-                    }
+        match db.import_modes_from_text_scoped_with_hint_and_strategy(
+            &content,
+            "github",
+            Some(item.repository.full_name.clone()),
+            Some(file_url.clone()),
+            Some(&config.path_hint),
+            "rename",
+        ) {
+            Ok(report) => {
+                result.saved_modes += report.saved;
+                result.skipped_due_to_missing_fields += report.skipped_due_to_missing_fields;
+                let status = if report.errors.is_empty() { "success" } else { "warning" };
+                for err in &report.errors {
+                    result.errors.push(format!("{}: {}", item.path, err));
                 }
+                let message = format!(
+                    "导入 {} 条，跳过 {} 条，重复 hash {} 条",
+                    report.saved, report.skipped_due_to_missing_fields, report.duplicate_hash
+                );
+                let _ = db.add_sync_log(
+                    "github",
+                    config.rule_id.as_deref(),
+                    config.rule_name.as_deref().or(Some(&config.query)),
+                    Some(&file_url),
+                    status,
+                    Some(&message),
+                );
             }
             Err(err) => {
-                result.errors.push(format!("解析 {} 失败: {}", item.path, err));
-                result.skipped_due_to_missing_fields += 1;
+                let message = format!("导入 {} 失败: {}", item.path, err);
+                result.errors.push(message.clone());
+                let _ = db.add_sync_log(
+                    "github",
+                    config.rule_id.as_deref(),
+                    config.rule_name.as_deref().or(Some(&config.query)),
+                    Some(&file_url),
+                    "error",
+                    Some(&message),
+                );
             }
         }
         sleep(Duration::from_secs(config.delay_sec)).await;
@@ -138,91 +280,36 @@ fn build_client(proxy: Option<String>) -> Result<Client, reqwest::Error> {
     builder.build()
 }
 
-fn parse_modes_from_text(
-    content: &str,
-    repo_name: &str,
-    file_path: &str,
-) -> Result<Vec<ModeRecord>, serde_yaml::Error> {
-    let yaml: serde_yaml::Value = serde_yaml::from_str(content)?;
-    let Some(sequence) = yaml.get("customModes").and_then(|v| v.as_sequence()) else {
-        return Ok(Vec::new());
-    };
-    let mut list = Vec::new();
-    for node in sequence {
-        if let Some(map) = node.as_mapping() {
-            let slug = map
-                .get(&serde_yaml::Value::String("slug".into()))
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let name = map
-                .get(&serde_yaml::Value::String("name".into()))
-                .and_then(|v| v.as_str())
-                .unwrap_or_else(|| slug.as_str())
-                .to_string();
-            let description = map
-                .get(&serde_yaml::Value::String("description".into()))
-                .and_then(|v| v.as_str())
-                .unwrap_or("来自 GitHub 的模式")
-                .to_string();
-            let role_definition = map
-                .get(&serde_yaml::Value::String("roleDefinition".into()))
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
-            if slug.is_empty() || role_definition.is_empty() {
-                continue;
-            }
-            let groups = map
-                .get(&serde_yaml::Value::String("groups".into()))
-                .and_then(|v| v.as_sequence())
-                .map(|seq| {
-                    seq.iter()
-                        .filter_map(|item| item.as_str().map(|s| s.to_string()))
-                        .collect::<Vec<String>>()
-                })
-                .unwrap_or_default();
+#[derive(Debug, Deserialize)]
+struct GithubContentResponse {
+    download_url: Option<String>,
+}
 
-            let when_to_use = map
-                .get(&serde_yaml::Value::String("whenToUse".into()))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let custom_instructions = map
-                .get(&serde_yaml::Value::String("customInstructions".into()))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-
-            let mut hasher = Sha256::new();
-            hasher.update(slug.as_bytes());
-            hasher.update(role_definition.as_bytes());
-            let hash = hasher
-                .finalize()
-                .iter()
-                .map(|b| format!("{:02x}", b))
-                .collect::<String>();
-
-            let payload = json!({
-                "__repo": repo_name,
-                "__path": file_path,
-                "__source": "github"
-            });
-
-            list.push(ModeRecord {
-                id: Uuid::new_v4().to_string(),
-                slug,
-                name,
-                description,
-                groups,
-                role_definition: role_definition.clone(),
-                role_definition_length: role_definition.chars().count() as i64,
-                source: format!("github:{}", repo_name),
-                when_to_use,
-                custom_instructions,
-                payload: Some(payload),
-                updated_at: Utc::now().to_rfc3339(),
-                hash,
-            });
+async fn resolve_download_url(
+    client: &Client,
+    token: &str,
+    branch: &str,
+    item: &GithubFileItem,
+) -> Result<String, GithubSyncError> {
+    let api_url = format!(
+        "https://api.github.com/repos/{}/contents/{}?ref={}",
+        item.repository.full_name, item.path
+        , urlencoding::encode(branch)
+    );
+    let resp = client
+        .get(&api_url)
+        .header("User-Agent", "kilo-roo-sync")
+        .header("Authorization", format!("token {}", token))
+        .send()
+        .await?;
+    if resp.status().is_success() {
+        let data = resp.json::<GithubContentResponse>().await?;
+        if let Some(url) = data.download_url {
+            return Ok(url);
         }
     }
-    Ok(list)
+    Ok(format!(
+        "https://raw.githubusercontent.com/{}/{}/{}",
+        item.repository.full_name, branch, item.path
+    ))
 }

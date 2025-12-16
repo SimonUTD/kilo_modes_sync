@@ -47,11 +47,16 @@ code_src/
 │   ├── components/        # 通用组件
 │   ├── router/            # Vue Router 配置
 │   ├── stores/            # Pinia 状态管理（Setup Store 模式）
+│   │   └── modes.ts       # 核心状态管理（所有 Mode/Rule/Instance 操作）
 │   ├── services/          # API 服务层（统一 Promise/async-await）
+│   │   └── bridge.ts      # Tauri 命令封装层（前端唯一调用点）
 │   ├── composables/       # 组合式函数（useXxx 命名）
 │   └── assets/            # 静态资源
 ├── src-tauri/             # Tauri Rust 后端
-│   ├── src/lib.rs         # Tauri 命令定义
+│   ├── src/
+│   │   ├── lib.rs         # Tauri 命令定义（60+ 命令）
+│   │   ├── db.rs          # SQLite 数据库层（3300+ 行核心逻辑）
+│   │   └── github.rs      # GitHub API 集成（搜索、下载、解析）
 │   ├── Cargo.toml         # Rust 依赖
 │   └── tauri.conf.json    # Tauri 配置
 └── public/                # 静态资产
@@ -66,8 +71,9 @@ code_src/
 
 **关键约束**：
 - ⚠️ **禁止前端直接访问文件系统**：Tauri 有严格的安全沙箱，所有文件操作必须在 Rust 侧实现
-- ⚠️ **路径兼容性**：macOS 和 Windows 对空格路径处理不同，Rust 侧需统一处理
+- ⚠️ **路径兼容性**：macOS 和 Windows 对空格路径处理不同，Rust 侧需统一处理（使用 `expand_home_path` 函数）
 - ⚠️ **macOS 不使用沙箱**：需要访问用户配置文件（`~/.config/kilocode/` 等）
+- ⚠️ **异步命令**：GitHub 同步等耗时操作必须使用 `async fn` 标记为异步命令
 
 ### 数据流架构
 
@@ -81,6 +87,26 @@ GitHub API → Rust 后端 → SQLite 本地数据库 → Rust 后端 → Vue �
 1. 所有数据输入（GitHub 抓取、用户录入）先保存到 SQLite
 2. 从数据库读取后进行同步操作
 3. 使用内容 hash 去重，避免重复存储
+
+### 关键技术实现
+
+**数据库层（db.rs）**：
+- **Schema 管理**：自动迁移机制（`run_migrations` + `ensure_schema`）
+- **内容去重**：使用 SHA256 计算 `content_hash`（基于 description + roleDefinition + groups + whenToUse + customInstructions）
+- **冲突处理**：支持 `overwrite`/`rename`/`skip` 三种策略
+- **历史记录**：`mode_history` 表记录所有变更（支持回放）
+- **日志系统**：文件日志（按小时分割，自动清理）+ 同步日志（`sync_logs` 表）
+
+**GitHub 集成（github.rs）**：
+- **搜索 API**：使用 GitHub Code Search API（最多 5 页，每页 20 条）
+- **下载策略**：优先使用 `download_url`，失败时回退到 `raw.githubusercontent.com`
+- **限流控制**：每次请求后延迟 `delay_sec` 秒（默认 3 秒）
+- **分支支持**：支持指定分支（默认 `main`）
+
+**前端状态管理（stores/modes.ts）**：
+- **Setup Store 模式**：使用 Composition API 风格
+- **响应式计算**：`highQualityModes`（根据 `roleDefinitionLength` 过滤）、`groupedBySource`（按来源分组）
+- **统一入口**：所有后端调用通过 `backendBridge` 封装
 
 ## 代码规范
 
@@ -167,6 +193,48 @@ GitHub API → Rust 后端 → SQLite 本地数据库 → Rust 后端 → Vue �
 3. IDE 配置管理（多实例同步）
 4. 设置（GitHub Token、搜索规则、代理配置）
 
+## 数据库 Schema
+
+**核心表结构**：
+```sql
+modes (
+  id, slug UNIQUE, name, description, groups,
+  role_definition, role_definition_length, source,
+  when_to_use, custom_instructions, payload,
+  raw_payload, source_path, source_alias,
+  updated_at, hash, content_hash UNIQUE
+)
+
+github_rules (
+  id, name, query, path_hint, branch,
+  enabled, delay_sec, last_run_at
+)
+
+ide_instances (
+  id, alias, kind, path UNIQUE,
+  last_scan_at, modes_count, status, selected_for_sync
+)
+
+mode_history (
+  id, mode_id, instance_id, action,
+  before_payload, after_payload, created_at
+)
+
+sync_logs (
+  id, sync_kind, rule_id, rule_name, target,
+  status, message, created_at
+)
+
+app_settings (
+  key PRIMARY KEY, value
+)
+```
+
+**关键索引**：
+- `idx_modes_content_hash`：内容去重
+- `idx_ide_instances_path`：路径唯一性
+- `idx_sync_logs_created_at`：日志查询优化
+
 ## 重要提醒
 
 - **不支持多用户**：单机本地工具，无用户管理
@@ -174,3 +242,6 @@ GitHub API → Rust 后端 → SQLite 本地数据库 → Rust 后端 → Vue �
 - **GitHub 批量导入**：一个文件包含多个 mode 时，直接分拆入库，无需中间选择
 - **去重机制**：使用内容 hash 去重，记录来源标记和保存时间
 - **错误容忍**：GitHub 数据处理时，单个 mode 解析失败应跳过而非中断整个流程
+- **路径处理**：所有路径操作必须通过 `expand_home_path` 函数处理（支持 `~/`、`%APPDATA%`、`%LOCALAPPDATA%`）
+- **YAML 解析**：支持 `path_hint` 参数（如 `customModes[].slug`）定位嵌套数组
+- **命名约定**：Rust 使用 snake_case，前端使用 camelCase，通过 serde 自动转换
