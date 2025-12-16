@@ -26,6 +26,10 @@ const compareList = ref<CompareItem[]>([
 ])
 
 const filterKeyword = ref('')
+const showImportDrawer = ref(false)
+const importError = ref<string | null>(null)
+const importSuccess = ref<string | null>(null)
+const importProgress = ref<{ total: number; success: number }>({ total: 0, success: 0 })
 
 const filteredModes = computed(() => {
   const keyword = filterKeyword.value.trim().toLowerCase()
@@ -37,6 +41,27 @@ const filteredModes = computed(() => {
       mode.slug.toLowerCase().includes(keyword)
   )
 })
+
+function openImportDrawer() {
+  importError.value = null
+  importSuccess.value = null
+  importProgress.value = { total: modes.value.length, success: 0 }
+  showImportDrawer.value = true
+}
+
+async function handleBootstrap() {
+  try {
+    await modeStore.bootstrap(true)
+    importProgress.value = { total: modes.value.length, success: modes.value.length }
+    importSuccess.value = '已从数据库刷新模式列表'
+  } catch (err) {
+    importError.value = err instanceof Error ? err.message : String(err)
+  }
+}
+
+function closeDrawer() {
+  showImportDrawer.value = false
+}
 
 onMounted(() => {
   modeStore.bootstrap().catch(() => {
@@ -107,7 +132,7 @@ onMounted(() => {
               <button class="rounded-md bg-blue-600 px-4 py-2 text-sm text-white shadow">
                 新建模式
               </button>
-              <button class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700">
+              <button class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700" @click="openImportDrawer">
                 批量导入
               </button>
             </div>
@@ -286,6 +311,54 @@ onMounted(() => {
             </table>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 导入抽屉 -->
+    <div
+      v-if="showImportDrawer"
+      class="fixed inset-0 z-20 flex justify-end bg-black/30 backdrop-blur-sm"
+      aria-modal="true"
+      role="dialog"
+    >
+      <div class="flex w-full max-w-md flex-col bg-white shadow-xl">
+        <header class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900">批量导入模式</h3>
+            <p class="text-sm text-gray-500">支持从 IDE 配置或 GitHub 拉取的模式重新刷新本地库</p>
+          </div>
+          <button @click="closeDrawer" class="text-gray-400 hover:text-gray-600">✕</button>
+        </header>
+
+        <div class="flex-1 space-y-4 overflow-auto px-5 py-4 text-sm text-gray-600">  <!--<space content>--> 
+          <p class="text-xs text-gray-500">当前库中模式数：{{ importProgress.total }}，最近一次扫描：{{ ideInstances[0]?.lastScanAt || '未记录' }}</p>
+          <div class="space-y-3 rounded-md bg-gray-50 p-3">
+            <p class="text-xs font-semibold text-gray-600">导入来源</p>
+            <ul class="list-disc space-y-1 pl-4 text-xs text-gray-500">
+              <li>已扫描的 IDE 实例（自动查找 `custom_modes.yaml`）</li>
+              <li>后续支持从 GitHub 规则直接入库</li>
+            </ul>
+          </div>
+          <button
+            class="w-full rounded-md bg-blue-600 px-4 py-2 text-sm text-white"
+            @click="handleBootstrap"
+          >
+            刷新模式列表
+          </button>
+
+          <div class="rounded-md bg-blue-50 p-3 text-xs text-blue-700" v-if="importSuccess">
+            {{ importSuccess }}
+          </div>
+          <div class="rounded-md bg-red-50 p-3 text-xs text-red-600" v-if="importError">
+            {{ importError }}
+          </div>
+        </div>
+
+        <footer class="border-t border-gray-100 px-5 py-4 text-right">
+          <button class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700" @click="closeDrawer">
+            关闭
+          </button>
+        </footer>
       </div>
     </div>
   </div>

@@ -125,6 +125,16 @@ export const useModeStore = defineStore('mode', () => {
     return saved
   }
 
+  async function scanKnownInstances() {
+    const synced = await backendBridge.scanKnownIdeInstances()
+    const instanceMap = new Map(ideInstances.value.map((item) => [item.id, item]))
+    synced.forEach((item) => {
+      instanceMap.set(item.id, item)
+    })
+    ideInstances.value = Array.from(instanceMap.values())
+    return synced
+  }
+
   function updateSyncLog(message: string) {
     lastSyncLog.value = message
   }
@@ -144,6 +154,7 @@ export const useModeStore = defineStore('mode', () => {
     saveMode,
     saveGithubRule,
     saveIdeInstance,
+    scanKnownInstances,
     updateSyncLog
   }
 })

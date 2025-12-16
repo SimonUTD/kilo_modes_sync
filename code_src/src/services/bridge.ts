@@ -23,5 +23,8 @@ export const backendBridge = {
   },
   async saveIdeInstance(payload: IdeInstanceEntity) {
     return invoke<IdeInstanceEntity>('save_ide_instance', { payload })
+  },
+  async scanKnownIdeInstances() {
+    return invoke<IdeInstanceEntity[]>('scan_known_instances')
   }
 }

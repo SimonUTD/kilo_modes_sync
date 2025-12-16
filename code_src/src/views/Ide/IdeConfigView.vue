@@ -59,9 +59,16 @@ const syncSummary = computed(() => ({
   lastResult: '全部实例写入成功'
 }))
 
-function handleScanKnownPaths() {
-  toast.value = '已模拟扫描白名单路径，后端实现后会根据这些路径更新数据库'
-  setTimeout(() => (toast.value = ''), 2500)
+async function handleScanKnownPaths() {
+  toast.value = '正在扫描已知路径...'
+  try {
+    await modeStore.scanKnownInstances()
+    toast.value = '扫描完成，结果已写入数据库'
+  } catch (err) {
+    toast.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    setTimeout(() => (toast.value = ''), 2500)
+  }
 }
 
 async function handleToggleSelection(target: IdeInstanceEntity, selected: boolean) {

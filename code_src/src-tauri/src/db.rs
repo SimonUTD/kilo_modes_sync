@@ -1,8 +1,13 @@
-use rusqlite::{params, Connection};
+use chrono::Utc;
+use dirs_next::home_dir;
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
+use serde_yaml::{Mapping as YamlMapping, Value as YamlValue};
+use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
 use std::{fs, sync::Mutex};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -16,11 +21,19 @@ pub enum DbError {
     Sql(#[from] rusqlite::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Yaml(#[from] serde_yaml::Error),
 }
 
 #[derive(Debug)]
 pub struct AppDatabase {
     conn: Mutex<Connection>,
+}
+
+#[derive(Default)]
+struct ModeImportResult {
+    discovered: usize,
+    saved: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -68,7 +81,10 @@ pub struct IdeInstanceRecord {
 
 impl AppDatabase {
     pub fn new(handle: &AppHandle) -> Result<Self, DbError> {
-        let dir = handle.path_resolver().app_data_dir().ok_or(DbError::ResolvePath)?;
+        let dir = handle
+            .path()
+            .app_data_dir()
+            .map_err(|_| DbError::ResolvePath)?;
         fs::create_dir_all(&dir)?;
         let db_path = dir.join("kilo_modes.db");
         let conn = Connection::open(db_path)?;
@@ -113,12 +129,14 @@ CREATE TABLE IF NOT EXISTS ide_instances (
     id TEXT PRIMARY KEY,
     alias TEXT NOT NULL,
     kind TEXT NOT NULL,
-    path TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
     last_scan_at TEXT,
     modes_count INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL,
     selected_for_sync INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ide_instances_path ON ide_instances(path);
 "#,
         )?;
         Ok(())
@@ -368,4 +386,258 @@ CREATE TABLE IF NOT EXISTS ide_instances (
         )?;
         Ok(record)
     }
+
+    pub fn find_instance_by_path(&self, path: &str) -> Result<Option<IdeInstanceRecord>, DbError> {
+        let conn = self.lock_conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, alias, kind, path, last_scan_at, modes_count, status, selected_for_sync
+             FROM ide_instances
+             WHERE path = ?1
+             LIMIT 1",
+        )?;
+        let result = stmt
+            .query_row([path], |row| {
+                Ok(IdeInstanceRecord {
+                    id: row.get("id")?,
+                    alias: row.get("alias")?,
+                    kind: row.get("kind")?,
+                    path: row.get("path")?,
+                    last_scan_at: row.get("last_scan_at")?,
+                    modes_count: row.get("modes_count")?,
+                    status: row.get("status")?,
+                    selected: row.get::<_, i64>("selected_for_sync")? == 1,
+                })
+            })
+            .optional()?;
+        Ok(result)
+    }
+
+    pub fn sync_known_instances(&self) -> Result<Vec<IdeInstanceRecord>, DbError> {
+        let now = Utc::now().to_rfc3339();
+        let mut synced = Vec::new();
+        for template in known_ide_templates() {
+            let existing = self.find_instance_by_path(template.path)?;
+            let path_display = template.path.to_string();
+            let resolved = expand_home_path(&path_display);
+            let exists = resolved.map(|p| p.exists()).unwrap_or(false);
+            let status = if exists { "synced" } else { "missing" }.to_string();
+            let import_result = if exists {
+                match self.import_modes_from_file(template.alias, &path_display) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        eprintln!("导入模式失败: {} => {}", template.path, err);
+                        ModeImportResult::default()
+                    }
+                }
+            } else {
+                ModeImportResult::default()
+            };
+            let mut record = IdeInstanceRecord {
+                id: existing
+                    .as_ref()
+                    .map(|item| item.id.clone())
+                    .unwrap_or_default(),
+                alias: existing
+                    .as_ref()
+                    .map(|item| item.alias.clone())
+                    .unwrap_or_else(|| template.alias.to_string()),
+                kind: template.kind.to_string(),
+                path: path_display.clone(),
+                last_scan_at: Some(now.clone()),
+                modes_count: existing.as_ref().map(|item| item.modes_count).unwrap_or(0),
+                status,
+                selected: existing.as_ref().map(|item| item.selected).unwrap_or(false),
+            };
+            if exists {
+                record.modes_count = import_result.discovered as i64;
+            }
+            record = self.upsert_ide_instance(record)?;
+            synced.push(record);
+        }
+        Ok(synced)
+    }
+
+    fn import_modes_from_file(&self, alias: &str, path: &str) -> Result<ModeImportResult, DbError> {
+        let mut report = ModeImportResult::default();
+        let Some(resolved) = expand_home_path(path) else {
+            return Ok(report);
+        };
+        if !resolved.exists() {
+            return Ok(report);
+        }
+        let content = fs::read_to_string(resolved)?;
+        let yaml: YamlValue = serde_yaml::from_str(&content)?;
+        let Some(sequence) = yaml.get("customModes").and_then(|v| v.as_sequence()) else {
+            return Ok(report);
+        };
+
+        for node in sequence {
+            report.discovered += 1;
+            match Self::mode_from_yaml(alias, path, node) {
+                Ok(Some(record)) => {
+                    if self.upsert_mode(record).is_ok() {
+                        report.saved += 1;
+                    }
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    eprintln!("解析模式失败 {}: {}", path, err);
+                }
+            }
+        }
+
+        Ok(report)
+    }
+
+    fn mode_from_yaml(alias: &str, source_path: &str, value: &YamlValue) -> Result<Option<ModeRecord>, DbError> {
+        let map = match value.as_mapping() {
+            Some(mapping) => mapping,
+            None => return Ok(None),
+        };
+
+        let slug = yaml_string(map_get(map, "slug"));
+        let name = yaml_string(map_get(map, "name"));
+        let description = yaml_string(map_get(map, "description"));
+        let role_definition = yaml_string(map_get(map, "roleDefinition"));
+        let groups = extract_groups(map_get(map, "groups"));
+
+        if slug.as_deref().unwrap_or_default().is_empty()
+            || name.as_deref().unwrap_or_default().is_empty()
+            || description.as_deref().unwrap_or_default().is_empty()
+            || role_definition.as_deref().unwrap_or_default().is_empty()
+        {
+            return Ok(None);
+        }
+
+        let slug = slug.unwrap();
+        let name = name.unwrap();
+        let description = description.unwrap();
+        let role_definition = role_definition.unwrap();
+
+        let when_to_use = yaml_string(map_get(map, "whenToUse"));
+        let custom_instructions = yaml_string(map_get(map, "customInstructions"));
+        let source_field = yaml_string(map_get(map, "source"));
+        let payload_value = {
+            let mut json_value = serde_json::to_value(value)?;
+            if let Value::Object(obj) = &mut json_value {
+                obj.insert("__sourcePath".into(), json!(source_path));
+                obj.insert("__sourceAlias".into(), json!(alias));
+            }
+            Some(json_value)
+        };
+
+        let mut hasher = Sha256::new();
+        hasher.update(slug.as_bytes());
+        hasher.update(role_definition.as_bytes());
+        hasher.update(description.as_bytes());
+        if let Some(custom) = custom_instructions.as_ref() {
+            hasher.update(custom.as_bytes());
+        }
+        let hash = hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>();
+
+        Ok(Some(ModeRecord {
+            id: Uuid::new_v4().to_string(),
+            slug,
+            name,
+            description,
+            groups,
+            role_definition: role_definition.clone(),
+            role_definition_length: role_definition.chars().count() as i64,
+            source: source_field.unwrap_or_else(|| format!("ide:{}", alias)),
+            when_to_use,
+            custom_instructions,
+                payload: payload_value,
+            updated_at: Utc::now().to_rfc3339(),
+            hash,
+        }))
+    }
+}
+
+struct KnownInstanceTemplate {
+    alias: &'static str,
+    kind: &'static str,
+    path: &'static str,
+}
+
+fn known_ide_templates() -> &'static [KnownInstanceTemplate] {
+    &[
+        KnownInstanceTemplate {
+            alias: "KiloCode - VSCode 主版",
+            kind: "kilocode",
+            path: "~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml",
+        },
+        KnownInstanceTemplate {
+            alias: "KiloCode - Trae 国服",
+            kind: "kilocode",
+            path: "~/Library/Application Support/Trae CN/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml",
+        },
+        KnownInstanceTemplate {
+            alias: "KiloCode - Trae 国际版",
+            kind: "kilocode",
+            path: "~/Library/Application Support/Trae/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml",
+        },
+        KnownInstanceTemplate {
+            alias: "RooCode - VSCode 主版",
+            kind: "roocode",
+            path: "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/custom_modes.yaml",
+        },
+        KnownInstanceTemplate {
+            alias: "RooCode - Trae 国服",
+            kind: "roocode",
+            path: "~/Library/Application Support/Trae CN/User/globalStorage/rooveterinaryinc.roo-cline/settings/custom_modes.yaml",
+        },
+        KnownInstanceTemplate {
+            alias: "RooCode - Trae 国际版",
+            kind: "roocode",
+            path: "~/Library/Application Support/Trae/User/globalStorage/rooveterinaryinc.roo-cline/settings/custom_modes.yaml",
+        },
+    ]
+}
+
+fn expand_home_path(path: &str) -> Option<PathBuf> {
+    if path.starts_with("~/") {
+        home_dir().map(|home| home.join(path.trim_start_matches("~/")))
+    } else {
+        Some(Path::new(path).to_path_buf())
+    }
+}
+
+fn map_get<'a>(map: &'a YamlMapping, key: &str) -> Option<&'a YamlValue> {
+    map.get(&YamlValue::String(key.to_string()))
+}
+
+fn yaml_string(value: Option<&YamlValue>) -> Option<String> {
+    value.and_then(|v| match v {
+        YamlValue::String(s) => Some(s.clone()),
+        YamlValue::Number(num) => Some(num.to_string()),
+        YamlValue::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    })
+}
+
+fn extract_groups(value: Option<&YamlValue>) -> Vec<String> {
+    let mut groups = Vec::new();
+    if let Some(YamlValue::Sequence(seq)) = value {
+        for item in seq {
+            match item {
+                YamlValue::String(text) => groups.push(text.clone()),
+                YamlValue::Sequence(inner) => {
+                    if let Some(YamlValue::String(text)) = inner.first() {
+                        groups.push(text.clone());
+                    }
+                }
+                YamlValue::Mapping(map) => {
+                    if let Some(YamlValue::String(text)) = map.get(&YamlValue::String("name".into())) {
+                        groups.push(text.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    groups
 }

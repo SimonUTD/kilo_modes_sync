@@ -25,3 +25,9 @@ serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 thiserror = "1"
 uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs-next = "2"
+serde_yaml = "0.9"
+sha2 = "0.10"
+reqwest = { version = "0.11", default-features = false, features = ["json", "gzip", "rustls-tls"] }
+urlencoding = "2"
