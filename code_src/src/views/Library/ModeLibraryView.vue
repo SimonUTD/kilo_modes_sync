@@ -693,7 +693,7 @@ watch(
 </script>
 
 <template>
-  <div class="p-4 space-y-4">
+  <div class="space-y-2 p-2">
     <!-- 顶部信息概览 -->
     <section class="grid gap-4 md:grid-cols-3">
       <div
@@ -868,10 +868,10 @@ watch(
             </table>
           </div>
           <div v-else class="rounded-lg border border-dashed border-gray-200 bg-white p-4 text-sm text-gray-600">
-            <p>暂无模式，请先通过 GitHub 同步或 IDE 扫描入库。</p>
+            <p>暂无模式，请先通过 模式采集 或 IDE 扫描入库。</p>
             <div class="mt-3 flex flex-wrap gap-3">
               <button class="rounded-md bg-blue-600 px-4 py-2 text-sm text-white" @click="router.push('/github-sync')">
-                去 GitHub 同步
+                去 模式采集
               </button>
               <button class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700" @click="router.push('/ide')">
                 去 IDE 配置
@@ -947,7 +947,7 @@ watch(
             <div class="mt-3 flex flex-wrap gap-3">
               <button class="rounded-md bg-blue-600 px-4 py-2 text-sm text-white" @click="router.push('/ide')">去 IDE 配置</button>
               <button class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700" @click="router.push('/github-sync')">
-                去 GitHub 同步
+                去 模式采集
               </button>
             </div>
           </div>

@@ -444,7 +444,7 @@ async fn sync_github_modes(
     state.log_event(
         "info",
         "sync_github_modes",
-        "开始 GitHub 同步",
+        "开始 模式采集",
         Some(json!({ "query": config.query, "pathHint": config.path_hint, "ruleId": config.rule_id, "ruleName": config.rule_name, "delaySec": config.delay_sec, "branch": config.branch })),
     );
     let result = sync_from_github(config, &state)
@@ -453,7 +453,7 @@ async fn sync_github_modes(
     state.log_event(
         "info",
         "sync_github_modes",
-        "GitHub 同步完成",
+        "模式采集完成",
         Some(json!({ "fetchedFiles": result.fetched_files, "savedModes": result.saved_modes, "skippedDueToMissingFields": result.skipped_due_to_missing_fields, "errors": result.errors.len() })),
     );
     if let Ok(mut guard) = settings_state.lock() {

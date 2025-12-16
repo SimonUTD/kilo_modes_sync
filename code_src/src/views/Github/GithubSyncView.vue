@@ -150,7 +150,7 @@ async function handleSyncRule(rule: GithubRuleEntity) {
       branch: rule.branch
     })
     modeStore.updateRuleRunTime(rule.id, new Date().toISOString())
-    statusMessage.value = 'GitHub 同步已完成'
+    statusMessage.value = '模式采集已完成'
     await refreshSyncLogs()
   } catch (err) {
     statusMessage.value = err instanceof Error ? err.message : String(err)
@@ -263,11 +263,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
+  <div class="space-y-2 p-2">
     <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <header class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 class="text-lg font-semibold text-gray-900">GitHub 同步</h2>
+          <h2 class="text-lg font-semibold text-gray-900">模式采集</h2>
           <p class="text-sm text-gray-500">按规则搜索并入库；Token/代理/延时请在“设置”中配置</p>
         </div>
         <div class="flex flex-wrap gap-2">

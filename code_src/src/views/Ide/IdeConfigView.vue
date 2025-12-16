@@ -236,7 +236,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
+  <div class="space-y-2 p-2">
     <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <header class="flex items-center justify-between">
         <div>

@@ -10,8 +10,8 @@ const { modes, ideInstances, githubRules } = storeToRefs(modeStore)
 
 const menuItems = [
   { label: '总览', description: '一键开始使用', to: '/' },
-  { label: '库管理', description: '模式库 + 写回历史', to: '/library', badge: () => String(modes.value.length) },
-  { label: 'GitHub 同步', description: '规则同步 + 记录追溯', to: '/github-sync', badge: () => String(githubRules.value.length) },
+  { label: '模式关联', description: '模式库 + 写回历史', to: '/library', badge: () => String(modes.value.length) },
+  { label: '模式采集', description: '规则同步 + 记录追溯', to: '/github-sync', badge: () => String(githubRules.value.length) },
   { label: 'IDE 配置', description: '实例识别 + 勾选目标', to: '/ide', badge: () => String(ideInstances.value.length) },
   { label: '设置', description: '日志、备份与 GitHub', to: '/settings' }
 ]
@@ -36,9 +36,9 @@ onMounted(async () => {
 
 <template>
   <div class="flex h-screen overflow-hidden bg-slate-950/5">
-    <aside class="sticky top-0 h-screen w-40 shrink-0 overflow-y-auto border-r border-gray-200 bg-white/90 p-4 shadow-sm">
+    <aside class="sticky top-0 h-screen w-28 shrink-0 overflow-y-auto border-r border-gray-200 bg-white/90 p-4 shadow-sm">
       <div>
-        <p class="text-sm font-semibold text-gray-900">Kilo/Roo<br/>自定义模式管家</p>
+        <p class="text-xl font-semibold text-gray-900">Kilo/Roo<br/>模式管家</p>
       </div>
 
       <nav class="mt-8 space-y-2">
@@ -66,13 +66,9 @@ onMounted(async () => {
 
     <main class="h-screen min-w-0 flex-1 overflow-y-auto">
       <header class="sticky top-0 z-10 border-b border-gray-200 bg-white/80 px-4 py-4 backdrop-blur">
-        <p class="text-xs uppercase tracking-widest text-gray-400">Kilo/Roo 模式管理</p>
         <h1 class="text-2xl font-semibold text-gray-900">
           {{ activeMenuItem.label }}
         </h1>
-        <p class="text-sm text-gray-500">
-          {{ activeMenuItem.description }}
-        </p>
       </header>
 
       <section class="min-h-[calc(100vh-96px)] bg-gray-50/80">

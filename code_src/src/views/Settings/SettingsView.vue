@@ -148,12 +148,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
+  <div class="space-y-2 p-2">
     <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <header class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-semibold text-gray-900">GitHub 配置</h2>
-          <p class="text-sm text-gray-500">Token、代理与调用延时（用于 GitHub 同步）</p>
+          <p class="text-sm text-gray-500">Token、代理与调用延时（用于 GitHub 模式采集）</p>
         </div>
         <div class="flex flex-wrap gap-2">
           <button @click="handleTestGithubToken" class="rounded-md bg-blue-600 px-4 py-2 text-sm text-white">测试 Token</button>
@@ -288,18 +288,6 @@ onMounted(async () => {
       <div class="mt-4 flex gap-3">
         <button @click="handleExport" class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700">导出备份</button>
         <button @click="handleImport" class="rounded-md bg-blue-600 px-4 py-2 text-sm text-white">导入备份</button>
-      </div>
-    </section>
-
-    <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-      <header>
-        <h2 class="text-lg font-semibold text-gray-900">其它默认值</h2>
-        <p class="text-sm text-gray-500">用于指导后端在新安装时刻的初始化策略</p>
-      </header>
-      <div class="mt-4 space-y-3 text-sm text-gray-700">
-        <p>• 程序首次运行会扫描白名单路径并以来源标记写入库；后续再同步时依赖内容哈希判断变更。</p>
-        <p>• GitHub 拉取失败会记录日志，但不会阻断其它规则的执行。</p>
-        <p>• 本地日志按分钟切分文件，并在 30 天后自动清理。</p>
       </div>
     </section>
 
