@@ -31,3 +31,4 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 reqwest = { version = "0.11", default-features = false, features = ["json", "gzip", "rustls-tls"] }
 urlencoding = "2"
+tokio = { version = "1", features = ["time"] }

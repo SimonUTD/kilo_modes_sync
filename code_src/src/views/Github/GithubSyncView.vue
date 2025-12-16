@@ -13,15 +13,14 @@ interface SyncRecord {
   status: 'success' | 'warning' | 'error'
 }
 
-const githubSettings = reactive({
+const modeStore = useModeStore()
+const { githubRules, githubSettings } = storeToRefs(modeStore)
+
+const githubSettingsForm = reactive({
   token: '',
-  delay: 3,
-  enableProxy: false,
+  delaySec: 3,
   proxyUrl: ''
 })
-
-const modeStore = useModeStore()
-const { githubRules } = storeToRefs(modeStore)
 
 const ruleDraft = reactive<Pick<GithubRuleEntity, 'name' | 'query' | 'pathHint' | 'enabled' | 'delaySec'>>({
   name: '',
@@ -31,20 +30,11 @@ const ruleDraft = reactive<Pick<GithubRuleEntity, 'name' | 'query' | 'pathHint' 
   delaySec: 3
 })
 
-const syncHistories = ref<SyncRecord[]>([
-  {
-    id: 'sync-1',
-    ruleName: '默认热门模式',
-    fetched: 8,
-    stored: 6,
-    skipped: 2,
-    finishedAt: '2024-03-22 09:36',
-    status: 'success'
-  }
-])
+const syncHistories = ref<SyncRecord[]>([])
 
 const ruleKeyword = ref('')
 const statusMessage = ref('')
+const lastSyncResult = computed(() => githubSettings.value?.lastResult ?? null)
 
 const filteredRules = computed(() => {
   const keyword = ruleKeyword.value.trim().toLowerCase()
@@ -66,7 +56,7 @@ function resetDraft() {
   ruleDraft.query = ''
   ruleDraft.pathHint = 'customModes: - slug: path:*.md'
   ruleDraft.enabled = true
-  ruleDraft.delaySec = githubSettings.delay
+  ruleDraft.delaySec = githubSettingsForm.delaySec
 }
 
 async function handleSaveRule() {
@@ -95,10 +85,52 @@ async function handleSaveRule() {
   }
 }
 
-onMounted(() => {
-  modeStore.bootstrap().catch(() => {
+async function handleSaveSettings() {
+  try {
+    await modeStore.updateGithubSettings({
+      token: githubSettingsForm.token,
+      proxy: githubSettingsForm.proxyUrl || null,
+      delaySec: githubSettingsForm.delaySec
+    })
+    statusMessage.value = 'GitHub 配置已保存'
+  } catch (err) {
+    statusMessage.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    setTimeout(() => (statusMessage.value = ''), 3000)
+  }
+}
+
+async function handleSyncRule(rule: GithubRuleEntity) {
+  statusMessage.value = `正在根据规则「${rule.name}」同步...`
+  try {
+    const result = await modeStore.syncGithubRule({ query: rule.query, pathHint: rule.pathHint })
+    syncHistories.value.unshift({
+      id: `sync-${Date.now()}`,
+      ruleName: rule.name,
+      fetched: result.fetchedFiles,
+      stored: result.savedModes,
+      skipped: result.skippedDueToMissingFields,
+      finishedAt: new Date().toLocaleString(),
+      status: result.errors.length ? 'warning' : 'success'
+    })
+    statusMessage.value = 'GitHub 同步已完成'
+  } catch (err) {
+    statusMessage.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    setTimeout(() => (statusMessage.value = ''), 4000)
+  }
+}
+
+onMounted(async () => {
+  await modeStore.bootstrap().catch(() => {
     statusMessage.value = '加载规则失败，请稍后重试'
   })
+  const settings = await modeStore.fetchGithubSettings().catch(() => null)
+  if (settings) {
+    githubSettingsForm.token = settings.token
+    githubSettingsForm.delaySec = settings.delaySec
+    githubSettingsForm.proxyUrl = settings.proxy ?? ''
+  }
 })
 </script>
 
@@ -118,7 +150,7 @@ onMounted(() => {
         <label class="text-sm text-gray-700">
           Personal Access Token
           <input
-            v-model="githubSettings.token"
+            v-model="githubSettingsForm.token"
             type="password"
             placeholder="ghp_xxx"
             class="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
@@ -127,7 +159,7 @@ onMounted(() => {
         <label class="text-sm text-gray-700">
           调用延时（秒）
           <input
-            v-model.number="githubSettings.delay"
+            v-model.number="githubSettingsForm.delaySec"
             type="number"
             min="1"
             class="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
@@ -136,20 +168,16 @@ onMounted(() => {
         <label class="text-sm text-gray-700">
           代理地址（可选）
           <input
-            v-model="githubSettings.proxyUrl"
+            v-model="githubSettingsForm.proxyUrl"
             type="text"
             placeholder="http://127.0.0.1:7890"
             class="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
           />
         </label>
-        <label class="flex items-center gap-2 text-sm text-gray-700">
-          <input v-model="githubSettings.enableProxy" type="checkbox" class="rounded border-gray-300" />
-          启用代理
-        </label>
       </div>
       <div class="mt-4 flex flex-wrap gap-3">
         <button @click="handleTestToken" class="rounded-md bg-blue-600 px-4 py-2 text-sm text-white">测试 Token</button>
-        <button class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700">保存配置</button>
+        <button @click="handleSaveSettings" class="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-700">保存配置</button>
         <p v-if="statusMessage" class="text-sm text-blue-600">{{ statusMessage }}</p>
       </div>
     </section>
@@ -177,6 +205,7 @@ onMounted(() => {
               <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">路径处理</th>
               <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">状态</th>
               <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">上次执行</th>
+              <th class="px-4 py-2 text-right text-xs font-medium text-gray-500">操作</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 bg-white">
@@ -198,6 +227,14 @@ onMounted(() => {
                 </span>
               </td>
               <td class="px-4 py-3 text-sm text-gray-600">{{ rule.lastRunAt || '-' }}</td>
+              <td class="px-4 py-3 text-right">
+                <button
+                  class="rounded-md border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:border-blue-500 hover:text-blue-600"
+                  @click="handleSyncRule(rule)"
+                >
+                  执行同步
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -242,6 +279,16 @@ onMounted(() => {
             </button>
           </div>
         </div>
+      </div>
+      <div
+        v-if="lastSyncResult"
+        class="mt-4 rounded-lg border border-green-100 bg-green-50/70 p-4 text-xs text-green-700"
+      >
+        <p class="font-semibold">最近一次同步结果</p>
+        <p>抓取 {{ lastSyncResult.fetchedFiles }} 个文件，成功入库 {{ lastSyncResult.savedModes }} 条，跳过 {{ lastSyncResult.skippedDueToMissingFields }} 条。</p>
+        <p v-if="lastSyncResult.errors.length" class="mt-1 text-red-600">
+          {{ lastSyncResult.errors.length }} 个错误示例：{{ lastSyncResult.errors[0] }}
+        </p>
       </div>
     </section>
 

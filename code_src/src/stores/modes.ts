@@ -31,6 +31,20 @@ export interface GithubRuleEntity {
   lastRunAt?: string | null
 }
 
+export interface GithubSyncResult {
+  fetchedFiles: number
+  savedModes: number
+  skippedDueToMissingFields: number
+  errors: string[]
+}
+
+export interface GithubSettingsEntity {
+  token: string
+  proxy?: string | null
+  delaySec: number
+  lastResult?: GithubSyncResult | null
+}
+
 export interface IdeInstanceEntity {
   id: string
   alias: string
@@ -45,6 +59,7 @@ export interface IdeInstanceEntity {
 export const useModeStore = defineStore('mode', () => {
   const modes = ref<ModeEntity[]>([])
   const githubRules = ref<GithubRuleEntity[]>([])
+  const githubSettings = ref<GithubSettingsEntity | null>(null)
   const ideInstances = ref<IdeInstanceEntity[]>([])
   const lastSyncLog = ref<string>('')
   const roleDefinitionThreshold = ref(800)
@@ -114,6 +129,38 @@ export const useModeStore = defineStore('mode', () => {
     return saved
   }
 
+  async function fetchGithubSettings() {
+    const data = await backendBridge.getGithubSettings()
+    githubSettings.value = {
+      token: data.token,
+      proxy: data.proxy,
+      delaySec: data.delaySec,
+      lastResult: data.lastResult
+    }
+    return githubSettings.value
+  }
+
+  async function updateGithubSettings(payload: { token: string; proxy?: string | null; delaySec: number }) {
+    await backendBridge.updateGithubSettings(payload)
+    if (!githubSettings.value) {
+      githubSettings.value = { ...payload, lastResult: null }
+    } else {
+      githubSettings.value.token = payload.token
+      githubSettings.value.proxy = payload.proxy
+      githubSettings.value.delaySec = payload.delaySec
+    }
+  }
+
+  async function syncGithubRule(payload: { query: string; pathHint: string }) {
+    const result = await backendBridge.syncGithubModes(payload)
+    if (!githubSettings.value) {
+      githubSettings.value = { token: '', proxy: null, delaySec: 3, lastResult: result }
+    } else {
+      githubSettings.value.lastResult = result
+    }
+    return result
+  }
+
   async function saveIdeInstance(entry: IdeInstanceEntity) {
     const saved = await backendBridge.saveIdeInstance(entry)
     const index = ideInstances.value.findIndex((item) => item.id === saved.id)
@@ -142,6 +189,7 @@ export const useModeStore = defineStore('mode', () => {
   return {
     modes,
     githubRules,
+    githubSettings,
     ideInstances,
     lastSyncLog,
     roleDefinitionThreshold,
@@ -153,6 +201,9 @@ export const useModeStore = defineStore('mode', () => {
     bootstrap,
     saveMode,
     saveGithubRule,
+    fetchGithubSettings,
+    updateGithubSettings,
+    syncGithubRule,
     saveIdeInstance,
     scanKnownInstances,
     updateSyncLog

@@ -1,9 +1,11 @@
 use crate::db::{AppDatabase, ModeRecord};
 use chrono::Utc;
 use reqwest::{Client, ClientBuilder};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
+use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -49,7 +51,7 @@ pub struct GithubSyncConfig {
     pub proxy: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GithubSyncResult {
     pub fetched_files: usize,
     pub saved_modes: usize,
@@ -122,7 +124,7 @@ pub async fn sync_from_github(
                 result.skipped_due_to_missing_fields += 1;
             }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(config.delay_sec)).await;
+        sleep(Duration::from_secs(config.delay_sec)).await;
     }
 
     Ok(result)
