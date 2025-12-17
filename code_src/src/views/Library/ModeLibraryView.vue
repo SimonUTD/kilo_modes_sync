@@ -785,7 +785,7 @@ watch(
                     v-if="showRoleDefinitionColumn"
                     class="w-24 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                   >
-                    roleDefinition 长度
+                    角色定义长度
                   </th>
                   <th class="w-32 px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                     操作

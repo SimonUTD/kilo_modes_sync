@@ -393,23 +393,23 @@ onMounted(async () => {
         <table class="w-full table-fixed divide-y divide-gray-100">
           <thead class="bg-gray-50">
             <tr>
-              <th class="w-28 px-4 py-2 text-left text-xs font-medium text-gray-500">规则</th>
-              <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">查询语句</th>
+              <!-- <th class="w-28 px-4 py-2 text-left text-xs font-medium text-gray-500">规则</th> -->
+              <th class="px-4 py-2 text-left text-xs font-medium text-gray-500" >查询语句</th>
               <th class="w-16 px-4 py-2 text-left text-xs font-medium text-gray-500">分支</th>
-              <th class="w-12 px-4 py-2 text-left text-xs font-medium text-gray-500">延时</th>
-              <th class="w-12 px-4 py-2 text-left text-xs font-medium text-gray-500">状态</th>
+              <th class="w-16 px-4 py-2 text-left text-xs font-medium text-gray-500">延时</th>
+              <th class="w-16 px-4 py-2 text-left text-xs font-medium text-gray-500">状态</th>
               <th class="w-24 px-4 py-2 text-left text-xs font-medium text-gray-500">上次执行</th>
               <th class="w-32 px-4 py-2 text-right text-xs font-medium text-gray-500">操作</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 bg-white">
             <tr v-for="rule in filteredRules" :key="rule.id" class="hover:bg-gray-50">
-              <td class="px-4 py-3">
+              <!-- <td class="px-4 py-3">
                 <p class="truncate text-sm font-medium text-gray-900" :title="rule.name">{{ rule.name }}</p>
                 <p class="truncate text-xs text-gray-400" :title="rule.id">{{ rule.id }}</p>
-              </td>
+              </td> -->
               <td class="px-4 py-3 text-sm text-gray-600">
-                <div class="truncate" :title="rule.query">{{ rule.query }}</div>
+                <div class="text-clip" :title="rule.query">{{ rule.query }}</div>
               </td>
               <td class="px-4 py-3 text-sm text-gray-600">
                 <span class="whitespace-nowrap">{{ rule.branch || 'main' }}</span>
@@ -420,7 +420,7 @@ onMounted(async () => {
               <td class="px-4 py-3 text-sm">
                 <span
                   :class="[
-                    'rounded-full px-2 py-1 text-xs',
+                    'rounded-full px-2 py-1 text-xs truncate',
                     rule.enabled ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-500'
                   ]"
                 >
@@ -494,7 +494,7 @@ onMounted(async () => {
 
       <div class="mt-6 rounded-lg border border-dashed border-blue-200 bg-blue-50/40 p-4">
         <p class="text-sm font-semibold text-gray-700">{{ editingRuleId ? '编辑规则' : '新增规则' }}</p>
-        <p class="mt-1 text-xs text-gray-500">解析提示为系统内置（无需填写），会保留 GitHub 原始字段并透传入库。</p>
+        <!-- <p class="mt-1 text-xs text-gray-500">解析提示为系统内置（无需填写），会保留 GitHub 原始字段并透传入库。</p> -->
         <div class="mt-3 grid gap-3 md:grid-cols-2">
           <label class="text-xs text-gray-600">
             规则名称
@@ -522,14 +522,14 @@ onMounted(async () => {
               <input v-model="ruleDraft.enabled" type="checkbox" class="rounded border-gray-300" />
               保存后立即启用
             </label>
-            <button
+            <!-- <button
               class="text-xs text-gray-600 underline decoration-dashed underline-offset-4 hover:text-blue-600"
               @click="showAdvanced = !showAdvanced"
             >
               {{ showAdvanced ? '收起高级选项' : '展开高级选项' }}
-            </button>
+            </button> -->
           </div>
-          <label v-if="showAdvanced" class="text-xs text-gray-600 md:col-span-2">
+          <!-- <label v-if="showAdvanced" class="text-xs text-gray-600 md:col-span-2">
             解析提示（高级选项）
             <textarea
               v-model="ruleDraft.pathHint"
@@ -537,7 +537,7 @@ onMounted(async () => {
               class="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
             ></textarea>
             <p class="mt-1 text-[11px] text-gray-500">默认值即可；除非你明确知道自定义结构，否则不建议修改。</p>
-          </label>
+          </label> -->
           <div class="flex flex-wrap justify-end gap-2 md:col-span-2">
             <button @click="handleSaveRule" class="rounded-md bg-blue-600 px-4 py-2 text-sm text-white">
               {{ editingRuleId ? '保存修改' : '保存规则' }}

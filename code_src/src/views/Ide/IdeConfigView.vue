@@ -11,38 +11,38 @@ const router = useRouter()
 const modeStore = useModeStore()
 const { ideInstances } = storeToRefs(modeStore)
 
-const knownPaths = [
-  {
-    label: 'VSCode KiloCode',
-    path: '~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml',
-    type: 'kilocode' as IdeType
-  },
-  {
-    label: 'Trae KiloCode（CN）',
-    path: '~/Library/Application Support/Trae CN/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml',
-    type: 'kilocode' as IdeType
-  },
-  {
-    label: 'Trae KiloCode（国际）',
-    path: '~/Library/Application Support/Trae/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml',
-    type: 'kilocode' as IdeType
-  },
-  {
-    label: 'VSCode 主版 RooCode',
-    path: '~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/custom_modes.yaml',
-    type: 'roocode' as IdeType
-  },
-  {
-    label: 'Trae RooCode（国服）',
-    path: '~/Library/Application Support/Trae CN/User/globalStorage/rooveterinaryinc.roo-cline/settings/custom_modes.yaml',
-    type: 'roocode' as IdeType
-  },
-  {
-    label: 'Trae RooCode（国际）',
-    path: '~/Library/Application Support/Trae/User/globalStorage/rooveterinaryinc.roo-cline/settings/custom_modes.yaml',
-    type: 'roocode' as IdeType
-  }
-]
+// const knownPaths = [
+//   {
+//     label: 'VSCode KiloCode',
+//     path: '~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml',
+//     type: 'kilocode' as IdeType
+//   },
+//   {
+//     label: 'Trae KiloCode（CN）',
+//     path: '~/Library/Application Support/Trae CN/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml',
+//     type: 'kilocode' as IdeType
+//   },
+//   {
+//     label: 'Trae KiloCode（国际）',
+//     path: '~/Library/Application Support/Trae/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml',
+//     type: 'kilocode' as IdeType
+//   },
+//   {
+//     label: 'VSCode 主版 RooCode',
+//     path: '~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/custom_modes.yaml',
+//     type: 'roocode' as IdeType
+//   },
+//   {
+//     label: 'Trae RooCode（国服）',
+//     path: '~/Library/Application Support/Trae CN/User/globalStorage/rooveterinaryinc.roo-cline/settings/custom_modes.yaml',
+//     type: 'roocode' as IdeType
+//   },
+//   {
+//     label: 'Trae RooCode（国际）',
+//     path: '~/Library/Application Support/Trae/User/globalStorage/rooveterinaryinc.roo-cline/settings/custom_modes.yaml',
+//     type: 'roocode' as IdeType
+//   }
+// ]
 
 const manualForm = reactive({
   alias: '',

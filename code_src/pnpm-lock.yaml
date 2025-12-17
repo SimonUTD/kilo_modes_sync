@@ -6,14 +6,14 @@ settings:
 
 dependencies:
   '@tauri-apps/api':
-    specifier: 2.7.0
-    version: 2.7.0
+    specifier: 2.9.1
+    version: 2.9.1
   '@tauri-apps/plugin-dialog':
     specifier: 2.4.0
     version: 2.4.0
   '@tauri-apps/plugin-opener':
-    specifier: 2.4.0
-    version: 2.4.0
+    specifier: 2.5.2
+    version: 2.5.2
   '@types/node':
     specifier: ^24.2.0
     version: 24.10.4
@@ -545,10 +545,6 @@ packages:
     dev: true
     optional: true
 
-  /@tauri-apps/api@2.7.0:
-    resolution: {integrity: sha512-v7fVE8jqBl8xJFOcBafDzXFc8FnicoH3j8o8DNNs0tHuEBmXUDqrCOAzMRX0UkfpwqZLqvrvK0GNQ45DfnoVDg==}
-    dev: false
-
   /@tauri-apps/api@2.9.1:
     resolution: {integrity: sha512-IGlhP6EivjXHepbBic618GOmiWe4URJiIeZFlB7x3czM0yDHHYviH1Xvoiv4FefdkQtn6v7TuwWCRfOGdnVUGw==}
     dev: false
@@ -676,10 +672,10 @@ packages:
       '@tauri-apps/api': 2.9.1
     dev: false
 
-  /@tauri-apps/plugin-opener@2.4.0:
-    resolution: {integrity: sha512-43VyN8JJtvKWJY72WI/KNZszTpDpzHULFxQs0CJBIYUdCRowQ6Q1feWTDb979N7nldqSuDOaBupZ6wz2nvuWwQ==}
+  /@tauri-apps/plugin-opener@2.5.2:
+    resolution: {integrity: sha512-ei/yRRoCklWHImwpCcDK3VhNXx+QXM9793aQ64YxpqVF0BDuuIlXhZgiAkc15wnPVav+IbkYhmDJIv5R326Mew==}
     dependencies:
-      '@tauri-apps/api': 2.7.0
+      '@tauri-apps/api': 2.9.1
     dev: false
 
   /@types/estree@1.0.8:

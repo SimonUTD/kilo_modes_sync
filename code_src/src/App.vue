@@ -37,11 +37,10 @@ onMounted(async () => {
 <template>
   <div class="flex h-screen overflow-hidden bg-slate-950/5">
     <aside class="sticky top-0 h-screen w-28 shrink-0 overflow-y-auto border-r border-gray-200 bg-white/90 p-4 shadow-sm">
-      <div>
-        <p class="text-xl font-semibold text-gray-900">Kilo/Roo<br/>模式管家</p>
+      <div class="">
+        <p class="text-l font-semibold text-gray-900">Kilo/Roo<br/>模式管家</p>
       </div>
-
-      <nav class="mt-8 space-y-2">
+      <nav class="mt-4 space-y-2 border-t">
         <RouterLink
           v-for="item in menuItems"
           :key="item.to"
