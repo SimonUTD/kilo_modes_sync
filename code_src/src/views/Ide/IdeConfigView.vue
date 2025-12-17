@@ -13,12 +13,12 @@ const { ideInstances } = storeToRefs(modeStore)
 
 const knownPaths = [
   {
-    label: 'VSCode 主版 KiloCode',
+    label: 'VSCode KiloCode',
     path: '~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml',
     type: 'kilocode' as IdeType
   },
   {
-    label: 'Trae KiloCode（国服）',
+    label: 'Trae KiloCode（CN）',
     path: '~/Library/Application Support/Trae CN/User/globalStorage/kilocode.kilo-code/settings/custom_modes.yaml',
     type: 'kilocode' as IdeType
   },
@@ -110,8 +110,8 @@ async function handleToggleSelection(target: IdeInstanceEntity, selected: boolea
 }
 
 function formatStatusLabel(status: IdeInstanceEntity['status']) {
-  if (status === 'synced') return '已扫描'
-  if (status === 'outdated') return '待检查'
+  if (status === 'synced') return '已查'
+  if (status === 'outdated') return '待查'
   return '未找到文件'
 }
 
@@ -241,7 +241,8 @@ onMounted(() => {
       <header class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-semibold text-gray-900">实例识别</h2>
-          <p class="text-sm text-gray-500">程序启动时优先扫描白名单路径，可手动添加自定义实例</p>
+          <p class="text-sm text-gray-500">程序启动时优先扫描常见的程序安装路径，可手动添
+加自定义实例</p>
         </div>
         <div class="flex flex-wrap gap-2">
           <button class="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700" @click="handleScanKnownPaths">
@@ -275,12 +276,12 @@ onMounted(() => {
         <table class="w-full table-fixed divide-y divide-gray-200">
           <thead class="bg-gray-50">
             <tr>
-              <th class="w-12 px-4 py-2 text-left text-xs font-semibold text-gray-500">勾选</th>
-              <th class="w-32 px-4 py-2 text-left text-xs font-semibold text-gray-500">别名</th>
+              <th class="w-8 px-4 py-2 text-left text-xs font-semibold text-gray-500"></th>
+              <th class="w-36 px-4 py-2 text-left text-xs font-semibold text-gray-500">别名</th>
               <th class="w-20 px-4 py-2 text-left text-xs font-semibold text-gray-500">类型</th>
               <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500">路径</th>
               <th class="w-20 px-4 py-2 text-left text-xs font-semibold text-gray-500">状态</th>
-              <th class="w-14 px-4 py-2 text-left text-xs font-semibold text-gray-500">模式数</th>
+              <th class="w-14 px-4 py-2 text-left text-xs font-semibold text-gray-500">模式</th>
               <th class="w-28 px-4 py-2 text-right text-xs font-semibold text-gray-500">操作</th>
             </tr>
           </thead>
@@ -299,15 +300,15 @@ onMounted(() => {
                 <p class="text-xs text-gray-400">{{ formatDateTime(instance.lastScanAt) }}</p>
               </td>
               <td class="px-4 py-3 text-xs uppercase text-gray-500">
-                {{ instance.kind === 'kilocode' ? 'KiloCode' : 'RooCode' }}
+                {{ instance.kind === 'kilocode' ? 'Kilo' : 'Roo' }}
               </td>
               <td class="min-w-0 px-4 py-3 text-xs font-mono text-gray-600">
-                <div class="truncate" :title="instance.path">{{ instance.path }}</div>
+                <div class="text-clip" :title="instance.path">{{ instance.path }}</div>
               </td>
               <td class="px-4 py-3 text-sm">
                 <span
                   :class="[
-                    'rounded-full px-2 py-1 text-xs font-medium',
+                    'rounded-full px-2 py-1 text-xs font-medium truncate',
                     instance.status === 'synced'
                       ? 'bg-green-50 text-green-600'
                       : instance.status === 'outdated'
@@ -457,14 +458,14 @@ onMounted(() => {
             class="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
           />
         </label>
-        <div class="text-xs text-gray-500 md:col-span-2">
+        <!-- <div class="text-xs text-gray-500 md:col-span-2">
           <p>常见路径：</p>
           <ul class="mt-1 list-disc space-y-1 pl-5">
             <li v-for="item in knownPaths" :key="item.path">
               {{ item.label }} — <span class="font-mono text-gray-600">{{ item.path }}</span>
             </li>
           </ul>
-        </div>
+        </div> -->
         <div class="md:col-span-2">
           <button @click="handleAddInstance" class="rounded-md bg-blue-600 px-4 py-2 text-sm text-white">
             保存实例

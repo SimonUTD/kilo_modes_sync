@@ -52,6 +52,7 @@ export interface GithubSettingsEntity {
   proxy?: string | null
   delaySec: number
   lastResult?: GithubSyncResult | null
+  lastTokenTestPassedAt?: string | null
 }
 
 export interface ModeImportReport {
@@ -180,6 +181,18 @@ export interface BackupImportResult {
   importedInstances: number
   updatedSettings: boolean
   errors: string[]
+}
+
+export interface BackupFileMeta {
+  version: number
+  exportedAt: string
+  includeModes: boolean
+  includeRules: boolean
+  includeInstances: boolean
+  includeSettings: boolean
+  modesCount: number
+  githubRulesCount: number
+  ideInstancesCount: number
 }
 
 export interface InstanceModeItem {
@@ -356,7 +369,8 @@ export const useModeStore = defineStore('mode', () => {
       token: data.token,
       proxy: data.proxy,
       delaySec: data.delaySec,
-      lastResult: data.lastResult
+      lastResult: data.lastResult,
+      lastTokenTestPassedAt: data.lastTokenTestPassedAt ?? null
     }
     return githubSettings.value
   }
@@ -389,6 +403,22 @@ export const useModeStore = defineStore('mode', () => {
 
   async function importBackup(payload: BackupPayload) {
     return backendBridge.importBackup({ payload })
+  }
+
+  async function exportBackupToFile(payload: { options: BackupOptions; targetDir: string }) {
+    return backendBridge.exportBackupToFile(payload)
+  }
+
+  async function validateBackupFile(path: string) {
+    return backendBridge.validateBackupFile({ path })
+  }
+
+  async function importBackupFromFile(path: string) {
+    return backendBridge.importBackupFromFile({ path })
+  }
+
+  async function getLogsDir() {
+    return backendBridge.getLogsDir()
   }
 
   async function listInstanceModes(instanceId: string) {
@@ -564,6 +594,10 @@ export const useModeStore = defineStore('mode', () => {
     clearSyncLogs,
     exportBackup,
     importBackup,
+    exportBackupToFile,
+    validateBackupFile,
+    importBackupFromFile,
+    getLogsDir,
     listInstanceModes,
     getInstanceModeRaw,
     upsertInstanceMode,

@@ -169,6 +169,25 @@ export const backendBridge = {
   async exportBackup(payload: { options: BackupOptions }) {
     return invoke<BackupPayload>('export_backup', { options: payload.options })
   },
+  async exportBackupToFile(payload: { options: BackupOptions; targetDir: string }) {
+    return invoke<string>('export_backup_to_file', { options: payload.options, target_dir: payload.targetDir })
+  },
+  async validateBackupFile(payload: { path: string }) {
+    return invoke<{
+      version: number
+      exportedAt: string
+      includeModes: boolean
+      includeRules: boolean
+      includeInstances: boolean
+      includeSettings: boolean
+      modesCount: number
+      githubRulesCount: number
+      ideInstancesCount: number
+    }>('validate_backup_file', { path: payload.path })
+  },
+  async importBackupFromFile(payload: { path: string }) {
+    return invoke<BackupImportResult>('import_backup_from_file', { path: payload.path })
+  },
   async importBackup(payload: { payload: BackupPayload }) {
     return invoke<BackupImportResult>('import_backup', { payload: payload.payload })
   },
@@ -186,6 +205,9 @@ export const backendBridge = {
     return invoke<{ ok: boolean; status: number; remaining?: number | null; resetAt?: string | null; message: string }>(
       'test_github_token_command'
     )
+  },
+  async getLogsDir() {
+    return invoke<string>('get_logs_dir')
   },
   async syncGithubModes(payload: {
     query: string

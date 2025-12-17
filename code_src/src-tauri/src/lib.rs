@@ -7,14 +7,16 @@ use db::{
     ModeHistoryRecord, ModeHistoryReplayResult, ModeImportReport, ModeMetaRecord, ModeRecord, SyncLogRecord, DbError,
 };
 use github::{sync_from_github, test_github_token, GithubSyncConfig, GithubSyncResult, GithubTokenTestResult};
+use std::fs;
 use std::sync::Mutex;
 use serde_json;
 use serde_json::json;
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager, State};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let handle = app.handle();
@@ -57,9 +59,13 @@ pub fn run() {
             clear_sync_logs,
             export_backup,
             import_backup,
+            export_backup_to_file,
+            validate_backup_file,
+            import_backup_from_file,
             get_github_settings,
             update_github_settings,
             test_github_token_command,
+            get_logs_dir,
             sync_github_modes
         ])
         .run(tauri::generate_context!())
@@ -339,12 +345,80 @@ fn import_backup(payload: BackupPayload, state: State<AppDatabase>) -> Result<Ba
     state.import_backup(payload).map_err(|err| err.to_string())
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupFileMeta {
+    pub version: i64,
+    pub exported_at: String,
+    pub include_modes: bool,
+    pub include_rules: bool,
+    pub include_instances: bool,
+    pub include_settings: bool,
+    pub modes_count: usize,
+    pub github_rules_count: usize,
+    pub ide_instances_count: usize,
+}
+
+#[tauri::command]
+fn export_backup_to_file(
+    options: Option<BackupOptions>,
+    target_dir: String,
+    state: State<AppDatabase>,
+) -> Result<String, String> {
+    state.log_event("info", "export_backup_to_file", "导出备份到文件", None);
+    let payload = state
+        .export_backup(options.unwrap_or_default())
+        .map_err(|err| err.to_string())?;
+    let dir = std::path::PathBuf::from(target_dir);
+    if !dir.is_dir() {
+        return Err("目标目录不存在或不可用".to_string());
+    }
+    let now = chrono::Local::now();
+    let filename = format!("kilo_roo_backup_{}.json", now.format("%Y%m%d_%H%M%S"));
+    let file_path = dir.join(filename);
+    let data = serde_json::to_vec_pretty(&payload).map_err(|err| err.to_string())?;
+    fs::write(&file_path, data).map_err(|err| err.to_string())?;
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn validate_backup_file(path: String) -> Result<BackupFileMeta, String> {
+    let raw = fs::read_to_string(&path).map_err(|err| err.to_string())?;
+    let payload: BackupPayload = serde_json::from_str(&raw).map_err(|err| format!("备份文件解析失败：{err}"))?;
+    if payload.version != 1 {
+        return Err(format!("不支持的备份版本：{}（当前仅支持 version=1）", payload.version));
+    }
+    Ok(BackupFileMeta {
+        version: payload.version,
+        exported_at: payload.exported_at.clone(),
+        include_modes: payload.options.include_modes,
+        include_rules: payload.options.include_rules,
+        include_instances: payload.options.include_instances,
+        include_settings: payload.options.include_settings,
+        modes_count: payload.modes.len(),
+        github_rules_count: payload.github_rules.len(),
+        ide_instances_count: payload.ide_instances.len(),
+    })
+}
+
+#[tauri::command]
+fn import_backup_from_file(path: String, state: State<AppDatabase>) -> Result<BackupImportResult, String> {
+    state.log_event("info", "import_backup_from_file", "从文件导入备份", Some(json!({ "path": path })));
+    let raw = fs::read_to_string(&path).map_err(|err| err.to_string())?;
+    let payload: BackupPayload = serde_json::from_str(&raw).map_err(|err| format!("备份文件解析失败：{err}"))?;
+    if payload.version != 1 {
+        return Err(format!("不支持的备份版本：{}（当前仅支持 version=1）", payload.version));
+    }
+    state.import_backup(payload).map_err(|err| err.to_string())
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GithubSettingsState {
     pub token: String,
     pub proxy: Option<String>,
     pub delay_sec: u64,
     pub last_result: Option<GithubSyncResult>,
+    pub last_token_test_passed_at: Option<String>,
 }
 
 impl Default for GithubSettingsState {
@@ -354,6 +428,7 @@ impl Default for GithubSettingsState {
             proxy: None,
             delay_sec: 3,
             last_result: None,
+            last_token_test_passed_at: None,
         }
     }
 }
@@ -372,12 +447,25 @@ impl GithubSettingsState {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubSettingsDto {
+    pub token: String,
+    pub proxy: Option<String>,
+    pub delay_sec: u64,
+    pub last_result: Option<GithubSyncResult>,
+    pub last_token_test_passed_at: Option<String>,
+}
+
 #[tauri::command]
-fn get_github_settings(state: State<'_, Mutex<GithubSettingsState>>) -> Result<GithubSettingsState, String> {
-    state
-        .lock()
-        .map(|guard| guard.clone())
-        .map_err(|_| "读取 GitHub 设置失败".to_string())
+fn get_github_settings(state: State<'_, Mutex<GithubSettingsState>>) -> Result<GithubSettingsDto, String> {
+    state.lock().map(|guard| GithubSettingsDto {
+        token: guard.token.clone(),
+        proxy: guard.proxy.clone(),
+        delay_sec: guard.delay_sec,
+        last_result: guard.last_result.clone(),
+        last_token_test_passed_at: guard.last_token_test_passed_at.clone(),
+    }).map_err(|_| "读取 GitHub 设置失败".to_string())
 }
 
 #[tauri::command]
@@ -391,6 +479,9 @@ fn update_github_settings(
     let mut guard = state
         .lock()
         .map_err(|_| "写入 GitHub 设置失败".to_string())?;
+    if guard.token != token {
+        guard.last_token_test_passed_at = None;
+    }
     guard.token = token;
     guard.proxy = proxy;
     guard.delay_sec = delay_sec.max(1);
@@ -400,6 +491,7 @@ fn update_github_settings(
 #[tauri::command]
 async fn test_github_token_command(
     settings_state: State<'_, Mutex<GithubSettingsState>>,
+    db: State<'_, AppDatabase>,
 ) -> Result<GithubTokenTestResult, String> {
     let (token, proxy) = {
         let guard = settings_state
@@ -407,9 +499,26 @@ async fn test_github_token_command(
             .map_err(|_| "读取 GitHub 设置失败".to_string())?;
         (guard.token.clone(), guard.proxy.clone())
     };
-    test_github_token(token, proxy)
+    let result = test_github_token(token, proxy)
         .await
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    if result.ok {
+        if let Ok(mut guard) = settings_state.lock() {
+            guard.last_token_test_passed_at = Some(chrono::Local::now().to_rfc3339());
+            let _ = guard.persist_to_db(&db);
+        }
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+fn get_logs_dir(app: AppHandle) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "读取应用数据目录失败".to_string())?
+        .join("logs");
+    Ok(dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
