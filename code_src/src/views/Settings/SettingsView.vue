@@ -269,7 +269,6 @@ onMounted(async () => {
           <h2 class="text-lg font-semibold text-gray-900">数据库备份</h2>
           <p class="text-sm text-gray-500">支持导出/导入本地库，方便在多台机器之间迁移</p>
         </div>
-        <p class="text-xs text-gray-400">文件格式：JSON 备份包</p>
       </header>
       <div class="mt-4 grid gap-4 md:grid-cols-3">
         <label class="flex items-center gap-2 text-sm text-gray-700">
